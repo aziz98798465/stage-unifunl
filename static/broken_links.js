@@ -253,7 +253,10 @@ boutonExport.addEventListener("click", () => {
     ];
 
     const echapperCSV = (valeur) => {
-        const texte = valeur == null ? "" : String(valeur);
+        let texte = valeur == null ? "" : String(valeur);
+        if (/^[\s]*[=+@\-\t\r]/.test(texte)) {
+            texte = `'${texte}`;
+        }
         return `"${texte.replace(/"/g, '""')}"`;
     };
 

@@ -169,6 +169,45 @@ button:disabled {
     color: #a12626;
 }
 
+.ai-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px 24px;
+    margin: 0 0 48px;
+    padding: 24px;
+    background: #ffffff;
+    border: 1px solid #e5e8f0;
+    border-radius: 16px;
+}
+
+.ai-panel h2 {
+    margin: 8px 0;
+}
+
+.ai-panel .subtitle {
+    margin: 8px 0 0;
+}
+
+.ai-panel > .message,
+.ai-results {
+    grid-column: 1 / -1;
+}
+
+.ai-results {
+    padding-top: 12px;
+    border-top: 1px solid #e5e8f0;
+    line-height: 1.6;
+}
+
+.ai-results p {
+    overflow-wrap: anywhere;
+}
+
+.ai-results li {
+    margin: 6px 0;
+}
+
 .results-section {
     padding: 10px 0 70px;
 }
@@ -272,6 +311,11 @@ footer {
     .results-header {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .ai-panel {
+        grid-template-columns: 1fr;
+        padding: 17px;
     }
 
     .product-grid {

@@ -6,12 +6,17 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+from broken_links_checker import (
+    effectuer_requete_securisee,
+    lire_contenu_limite,
+    valider_url as valider_url_publique,
+)
 
 
 # Configuration
@@ -20,24 +25,14 @@ MAX_PAGES = 3
 DELAI_ENTRE_REQUETES = 0.5
 TIMEOUT = 15
 NOMBRE_REQUETES_PARALLELES = 3
+LIMITE_PAGES = 10
 
 DOSSIER_SORTIE = Path(__file__).parent / "output"
 
 
 def valider_url(url):
-    """Vérifier que l'URL possède un schéma HTTP(S) et un hôte."""
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("L'URL est vide ou invalide.")
-
-    url = url.strip()
-    parties = urlparse(url)
-
-    if parties.scheme not in ("http", "https") or not parties.hostname:
-        raise ValueError(
-            "L'URL doit commencer par http:// ou https://."
-        )
-
-    return url
+    """Valider le schéma et bloquer les destinations non publiques."""
+    return valider_url_publique(url)
 
 
 def creer_session():
@@ -57,6 +52,7 @@ def creer_session():
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"],
         respect_retry_after_header=True,
+        retry_after_max=5,
     )
 
     adaptateur = HTTPAdapter(
@@ -132,9 +128,17 @@ def extraire_produits(soup, url_page):
 
 
 def telecharger_page(session, url):
-    """Télécharger une page et vérifier la réponse HTTP."""
-    response = session.get(url, timeout=TIMEOUT)
-    response.raise_for_status()
+    """Télécharger une page en validant chaque destination de redirection."""
+    response = effectuer_requete_securisee(
+        session,
+        url,
+        timeout=TIMEOUT,
+    )
+    try:
+        response.raise_for_status()
+    except requests.RequestException:
+        response.close()
+        raise
     return response
 
 
@@ -149,19 +153,16 @@ def decouvrir_pages(session, url, max_pages):
     for numero_page in range(1, max_pages + 1):
         print(f"\nTéléchargement de la page {numero_page} : {url_page}")
 
+        response = telecharger_page(session, url_page)
         try:
-            response = telecharger_page(session, url_page)
-        except requests.RequestException as erreur:
-            print(f"Erreur HTTP ou réseau : {erreur}")
-            break
+            contenu = lire_contenu_limite(response)
+            url_reponse = response.url
+        finally:
+            response.close()
 
-        soup = BeautifulSoup(response.content, "html.parser")
+        soup = BeautifulSoup(contenu, "html.parser")
 
-        # Conserver le contenu déjà téléchargé.
-        pages.append({
-            "url": response.url,
-            "contenu": response.content,
-        })
+        pages.append({"url": url_reponse, "contenu": contenu})
 
         lien_suivant = soup.select_one("li.next a")
 
@@ -169,7 +170,8 @@ def decouvrir_pages(session, url, max_pages):
             print("Fin de la pagination.")
             break
 
-        url_page = urljoin(response.url, lien_suivant["href"])
+        url_page = urljoin(url_reponse, lien_suivant["href"])
+        valider_url(url_page)
 
         if numero_page < max_pages:
             time.sleep(DELAI_ENTRE_REQUETES)
@@ -189,18 +191,52 @@ def extraire_page_telechargee(page):
     }
 
 
+def telecharger_et_extraire_url(url):
+    """Télécharger puis analyser une URL connue dans sa propre session."""
+    with creer_session() as session:
+        response = telecharger_page(session, url)
+        try:
+            contenu = lire_contenu_limite(response)
+            page = {"url": response.url, "contenu": contenu}
+        finally:
+            response.close()
+    return extraire_page_telechargee(page)["produits"]
+
+
+def scraper_urls_en_parallele(urls):
+    """Scraper une liste bornée d'URL connues avec un ordre stable."""
+    if not isinstance(urls, list) or not 1 <= len(urls) <= LIMITE_PAGES:
+        raise ValueError(f"Fournissez une liste de 1 à {LIMITE_PAGES} URL.")
+
+    urls_validees = [valider_url(url) for url in urls]
+    if len(set(urls_validees)) != len(urls_validees):
+        raise ValueError("La liste contient des URL en double.")
+
+    resultats = [None] * len(urls_validees)
+    with ThreadPoolExecutor(max_workers=NOMBRE_REQUETES_PARALLELES) as executor:
+        futures = {
+            executor.submit(telecharger_et_extraire_url, url): index
+            for index, url in enumerate(urls_validees)
+        }
+        for future in as_completed(futures):
+            resultats[futures[future]] = future.result()
+
+    return [produit for groupe in resultats for produit in groupe]
+
+
 def scraper_produits(url, max_pages=MAX_PAGES):
     """Télécharger chaque page une seule fois et traiter le HTML en parallèle."""
-    url = valider_url(url)
-
     if (
         not isinstance(max_pages, int)
         or isinstance(max_pages, bool)
         or max_pages < 1
+        or max_pages > LIMITE_PAGES
     ):
         raise ValueError(
-            "max_pages doit être un entier supérieur ou égal à 1."
+            f"max_pages doit être compris entre 1 et {LIMITE_PAGES}."
         )
+
+    url = valider_url(url)
 
     with creer_session() as session:
         pages = decouvrir_pages(session, url, max_pages)
@@ -277,7 +313,15 @@ def exporter_csv(produits, chemin):
     with open(chemin, "w", newline="", encoding="utf-8-sig") as fichier:
         writer = csv.DictWriter(fichier, fieldnames=champs)
         writer.writeheader()
-        writer.writerows(produits)
+        for produit in produits:
+            ligne = produit.copy()
+            for champ in champs:
+                valeur = ligne.get(champ)
+                if isinstance(valeur, str) and valeur.lstrip().startswith(
+                    ("=", "+", "-", "@", "\t", "\r")
+                ):
+                    ligne[champ] = "'" + valeur
+            writer.writerow(ligne)
 
 
 def main():

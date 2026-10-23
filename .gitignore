@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 .env
+.env.*
+!.env.example
+instance/
 broken-links-checker/output/
 
 scraper/first_scraper_backup.py

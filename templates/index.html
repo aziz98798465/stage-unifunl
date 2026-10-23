@@ -43,6 +43,30 @@
             <div id="message" class="message" role="status" aria-live="polite" hidden></div>
         </section>
 
+        <section class="ai-panel" aria-labelledby="ai-title">
+            <div>
+                <p class="eyebrow">ANALYSE OPTIONNELLE</p>
+                <h2 id="ai-title">Résumer et structurer une page avec l’IA</h2>
+                <p class="subtitle">
+                    Après clic, le texte de la page saisie ci-dessus sera envoyé
+                    à OpenAI pour produire un résumé, une catégorie et les
+                    informations extraites. Configurez une clé OpenAI ou un modèle Ollama local.
+                </p>
+            </div>
+            <button id="analyze-page-button" type="button" class="secondary-button">
+                Analyser avec l’IA
+            </button>
+            <p id="ai-message" class="message" role="status" aria-live="polite" hidden></p>
+            <div id="ai-results" class="ai-results" hidden>
+                <p><strong>Catégorie :</strong> <span id="ai-category"></span></p>
+                <p><strong>Résumé :</strong> <span id="ai-summary"></span></p>
+                <p><strong>Nom extrait :</strong> <span id="ai-name"></span></p>
+                <p><strong>Description :</strong> <span id="ai-description"></span></p>
+                <p><strong>Caractéristiques :</strong></p>
+                <ul id="ai-features"></ul>
+            </div>
+        </section>
+
         <section id="results-section" class="results-section" hidden>
             <div class="results-header">
                 <div>

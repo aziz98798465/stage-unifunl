@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Rapport technique — Projet Stage Unifunl</title>
+  <style>
+    @page { size: A4; margin: 17mm 17mm 19mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #17233b; font: 10pt/1.48 "Segoe UI", Arial, sans-serif; }
+    h1, h2, h3 { color: #17233b; line-height: 1.2; }
+    h1 { font-size: 30pt; margin: 0 0 12pt; letter-spacing: -0.5pt; }
+    h2 { font-size: 17pt; margin: 20pt 0 8pt; padding-bottom: 5pt; border-bottom: 1px solid #dbe2f0; }
+    h3 { font-size: 11pt; margin: 12pt 0 4pt; }
+    p { margin: 0 0 8pt; }
+    ul, ol { margin: 3pt 0 9pt; padding-left: 20pt; }
+    li { margin: 0 0 3pt; }
+    code { font: 8.3pt Consolas, "Courier New", monospace; color: #263c74; }
+    .cover { height: 250mm; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; }
+    .cover-top { color: #5668e8; font-weight: 700; text-transform: uppercase; letter-spacing: 2pt; font-size: 10pt; }
+    .cover-title { margin-top: 44mm; }
+    .cover-title h1 { font-size: 34pt; }
+    .cover-title p { color: #65738d; font-size: 15pt; max-width: 135mm; }
+    .rule { width: 28mm; height: 4px; background: #5966e9; margin: 17pt 0; }
+    .cover-meta { border-top: 1px solid #dbe2f0; padding-top: 12pt; color: #52617a; }
+    .cover-meta p { margin-bottom: 4pt; }
+    .notice { background: #f0f3ff; border-left: 4px solid #5966e9; padding: 10pt 12pt; margin: 10pt 0; }
+    .warning { background: #fff5e9; border-left: 4px solid #db9130; padding: 9pt 11pt; margin: 9pt 0; }
+    .ok { color: #176a50; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; margin: 8pt 0 13pt; font-size: 8.7pt; }
+    th { background: #eef1ff; text-align: left; color: #24376b; }
+    td, th { border: 1px solid #dbe2f0; padding: 6pt 7pt; vertical-align: top; }
+    tr { break-inside: avoid; }
+    .small { color: #68768d; font-size: 8.5pt; }
+    .kpis { display: flex; gap: 8pt; margin: 12pt 0; }
+    .kpi { flex: 1; border: 1px solid #dbe2f0; padding: 9pt; border-radius: 5pt; }
+    .kpi strong { display: block; color: #4d5bdd; font-size: 18pt; }
+    .page-break { break-before: page; }
+    .nowrap { white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="cover-top">Stage Unifunl · Rapport technique</div>
+    <div class="cover-title">
+      <div class="rule"></div>
+      <h1>Conception et réalisation<br>des outils web</h1>
+      <p>Scraping de données, vérification de liens et analyse de contenu avec un modèle de langage</p>
+    </div>
+    <div class="cover-meta">
+      <p><strong>Stagiaire :</strong> [Nom et prénom à compléter]</p>
+      <p><strong>Encadrant :</strong> [Nom à compléter]</p>
+      <p><strong>Structure d’accueil :</strong> Unifunl</p>
+      <p><strong>Période du stage :</strong> [Dates exactes à compléter]</p>
+      <p><strong>Date du rapport :</strong> 24 octobre 2026</p>
+    </div>
+  </section>
+
+  <h2>Résumé</h2>
+  <p>Ce rapport décrit l’application web locale réalisée pour le projet de stage Unifunl. Elle regroupe un scraper spécialisé dans les pages de livres de démonstration, un vérificateur de liens cassés et une fonction facultative d’analyse de texte par modèle de langage. L’application Flask expose les fonctionnalités à travers des interfaces web et une API JSON. Un exemple Playwright traite également une page dont le contenu est généré en JavaScript.</p>
+  <p>La livraison inclut la validation des URL, la vérification des redirections, des limites de taille et de concurrence, des exports CSV protégés contre l’injection de formules, ainsi que des tests automatisés. L’analyse IA peut utiliser OpenAI ou Ollama exécuté localement. L’utilisateur a confirmé que l’analyse Ollama fonctionne sur son ordinateur; l’appel au service OpenAI n’a pas été réalisé.</p>
+  <div class="kpis">
+    <div class="kpi"><strong>64</strong>tests automatisés réussis</div>
+    <div class="kpi"><strong>60</strong>produits récupérés sur 3 pages</div>
+    <div class="kpi"><strong>2</strong>outils web principaux</div>
+  </div>
+  <div class="notice"><strong>Portée du document.</strong> Ce rapport technique décrit le logiciel et les vérifications effectuées. Il ne remplace pas le bilan personnel de stage. Les dates, les échanges avec le tuteur et les présentations doivent être complétés à partir des faits réels.</div>
+
+  <h2>1. Objectifs et périmètre</h2>
+  <p>Le projet vise à produire de petits outils web démontrant des opérations courantes de collecte et de vérification de données. L’application est conçue pour une démonstration locale. Elle ne doit pas être présentée comme un service public multi-utilisateur sécurisé sans renforcement complémentaire, notamment contre le DNS rebinding.</p>
+  <ul>
+    <li>Récupérer et structurer des informations de pages de livres sur Books to Scrape.</li>
+    <li>Traiter la pagination et permettre le scraping parallèle d’URL indépendantes.</li>
+    <li>Extraire des citations d’une page JavaScript avec Playwright.</li>
+    <li>Repérer et classer les liens fonctionnels ou cassés d’une page.</li>
+    <li>Fournir des interfaces, des routes JSON et des exports CSV.</li>
+    <li>Analyser, sur demande explicite, le texte d’une page ou un texte saisi par l’utilisateur.</li>
+  </ul>
+
+  <h2>2. Architecture générale</h2>
+  <p>Flask sert les deux interfaces et centralise les routes API. Les modules métier restent séparés : scraper statique, exemple Playwright, vérificateur de liens et client LLM. Les interfaces utilisent JavaScript pour appeler les routes et afficher les données. Le serveur de développement écoute sur <code>127.0.0.1:5000</code>.</p>
+  <table>
+    <thead><tr><th>Composant</th><th>Responsabilité</th><th>Technologies</th></tr></thead>
+    <tbody>
+      <tr><td>Application web</td><td>Pages, validation des requêtes et API JSON</td><td>Flask, Jinja</td></tr>
+      <tr><td>Scraper de livres</td><td>Pages statiques, extraction, pagination, CSV/JSON</td><td>Requests, BeautifulSoup</td></tr>
+      <tr><td>Scraper dynamique</td><td>Chargement et extraction de citations après rendu JavaScript</td><td>Playwright, Chromium</td></tr>
+      <tr><td>Vérificateur de liens</td><td>Collecte et contrôle des liens HTTP(S), rapport CLI et interface</td><td>Requests, BeautifulSoup</td></tr>
+      <tr><td>Analyse LLM</td><td>Résumé, catégorie et extraction de champs structurés</td><td>OpenAI Responses API ou Ollama local</td></tr>
+      <tr><td>Interface</td><td>Saisie, états, résultats, affichage mobile et export</td><td>HTML, CSS, JavaScript</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Fonctionnalités réalisées</h2>
+  <h3>3.1 Scraping de livres</h3>
+  <p>Le scraper utilise Requests pour récupérer le HTML et BeautifulSoup pour en extraire le titre, le prix, la devise et l’image. Les champs manquants sont traités et les données peuvent être exportées en JSON et CSV. La pagination est bornée : trois pages par défaut et dix au maximum. L’ordre d’entrée des résultats est conservé.</p>
+  <p>La route <code>POST /api/scrape-batch</code> accepte de une à dix URL publiques indépendantes et limite la concurrence à trois téléchargements simultanés. La pagination suivie reste séquentielle, car l’URL suivante est découverte sur la page courante.</p>
+  <h3>3.2 Scraping dynamique</h3>
+  <p>Le script Playwright ouvre Quotes to Scrape, attend le rendu du contenu dynamique, puis extrait citations, auteurs et tags. Requests seul ne voit pas nécessairement les éléments insérés après le chargement de la page.</p>
+  <h3>3.3 Vérificateur de liens</h3>
+  <p>Le vérificateur extrait les liens absolus et relatifs, contrôle leur réponse HTTP et produit un rapport. Il est accessible en ligne de commande et depuis la page <code>/liens</code>. Le nombre maximal de liens est borné à 500.</p>
+  <h3>3.4 Analyse de texte par IA</h3>
+  <p>La fonction facultative retire les éléments non textuels de la page, limite le texte transmis à 12 000 caractères et demande une sortie conforme à un schéma JSON. Les champs retournés sont le résumé, la catégorie, le nom, la description et les caractéristiques. L’envoi n’a lieu qu’après action explicite de l’utilisateur.</p>
+  <ul>
+    <li><strong>OpenAI :</strong> nécessite une clé API; l’application borne les appels à cinq par heure dans le processus courant.</li>
+    <li><strong>Ollama :</strong> exécute un modèle local à <code>127.0.0.1:11434</code>, sans clé OpenAI ni facturation API. L’utilisateur confirme que le mode local fonctionne.</li>
+  </ul>
+
+  <h2>4. Routes principales</h2>
+  <table>
+    <thead><tr><th>Méthode et route</th><th>Fonction</th><th>Entrée principale</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /</code></td><td>Interface scraper</td><td>—</td></tr>
+      <tr><td><code>GET /liens</code></td><td>Interface vérificateur</td><td>—</td></tr>
+      <tr><td><code>GET /api/health</code></td><td>État de l’application</td><td>—</td></tr>
+      <tr><td><code>GET /api/scrape?url=…</code></td><td>Scraping paginé</td><td>URL</td></tr>
+      <tr><td><code>POST /api/scrape-batch</code></td><td>Scraping parallèle</td><td><code>{"urls": […]}</code></td></tr>
+      <tr><td><code>POST /api/check-links</code></td><td>Vérification de liens</td><td><code>{"url": "…", "max_liens": 10}</code></td></tr>
+      <tr><td><code>POST /api/analyze-page</code></td><td>Analyse du texte d’une page</td><td><code>{"url": "https://…"}</code></td></tr>
+      <tr><td><code>POST /api/analyze-text</code></td><td>Analyse de texte brut</td><td><code>{"text": "…"}</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Technologies et organisation du dépôt</h2>
+  <table>
+    <thead><tr><th>Fichier ou dossier</th><th>Rôle</th></tr></thead>
+    <tbody>
+      <tr><td><code>app.py</code></td><td>Application Flask, validation et routes web/API</td></tr>
+      <tr><td><code>scraper/first_scraper.py</code></td><td>Scraper statique et exports</td></tr>
+      <tr><td><code>scraper/playwright_scraper.py</code></td><td>Exemple de scraping dynamique</td></tr>
+      <tr><td><code>broken-links-checker/</code></td><td>Vérificateur de liens en ligne de commande et tests</td></tr>
+      <tr><td><code>broken_links_checker/</code></td><td>Fonctions partagées de validation réseau</td></tr>
+      <tr><td><code>templates/</code>, <code>static/</code></td><td>Interfaces HTML, styles et scripts navigateur</td></tr>
+      <tr><td><code>llm_analyzer.py</code></td><td>Adaptateurs OpenAI/Ollama et validation JSON</td></tr>
+      <tr><td><code>test_*.py</code></td><td>Tests unitaires et tests d’API</td></tr>
+      <tr><td><code>docs/</code></td><td>Documentation, checklist et support de démonstration</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Installation et démarrage</h2>
+  <p>Environnement vérifié sous Python 3.13 sur Windows. Depuis PowerShell :</p>
+  <pre><code>cd C:\Users\pc\Documents\stage-unifunl
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+python .\app.py</code></pre>
+  <p>Ouvrir <code>http://127.0.0.1:5000</code> pour le scraper. La page de vérification est disponible à <code>http://127.0.0.1:5000/liens</code>.</p>
+  <h3>Mode local Ollama</h3>
+  <p>Installer Ollama pour Windows et télécharger le modèle, une seule fois :</p>
+  <pre><code>ollama pull gemma3:4b</code></pre>
+  <p>Dans le terminal qui lance Flask, sélectionner le fournisseur local :</p>
+  <pre><code>$env:LLM_PROVIDER = "ollama"
+$env:OLLAMA_MODEL = "gemma3:4b"
+python .\app.py</code></pre>
+  <p>Ollama doit être actif localement. Le modèle Gemma 3 4B téléchargé occupe environ 3,4 Go; la vitesse dépend du processeur et de la carte graphique. La procédure OpenAI et les précautions sur les clés sont dans le README.</p>
+
+  <h2>7. Tests et résultats observés</h2>
+  <table>
+    <thead><tr><th>Vérification</th><th>Résultat</th><th>Portée</th></tr></thead>
+    <tbody>
+      <tr><td>Pytest</td><td class="ok">64 réussis, 0 échec</td><td>Inclut API Flask, validation, scraping, sorties CSV, limites, LLM et Ollama simulés</td></tr>
+      <tr><td>Compilation et dépendances</td><td class="ok">Sans erreur; pip check propre</td><td>Environnement virtuel du projet</td></tr>
+      <tr><td>Flask local</td><td class="ok">HTTP 200 pour accueil, liens et santé</td><td>Essai précédent de démarrage local</td></tr>
+      <tr><td>Books to Scrape</td><td class="ok">60 produits sur trois pages</td><td>Essai réseau du scraper parallèle</td></tr>
+      <tr><td>Quotes to Scrape</td><td class="ok">10 citations extraites</td><td>Essai réel via Playwright</td></tr>
+      <tr><td>Interface Chromium</td><td class="ok">390 px et 1280 px, sans débordement horizontal</td><td>Interactions navigateur simulées</td></tr>
+      <tr><td>Ollama</td><td class="ok">Fonctionnement confirmé par l’utilisateur</td><td>Pas relancé indépendamment dans l’environnement de cette vérification</td></tr>
+    </tbody>
+  </table>
+  <p>Commande de vérification :</p>
+  <pre><code>python -m compileall -q app.py scraper broken_links_checker broken-links-checker scripts
+python -m pytest -v
+python -m pip check</code></pre>
+  <div class="warning"><strong>Évaluation LLM :</strong> un jeu de trois exemples et un script d’évaluation sont fournis. Le score qualité n’a pas encore été produit. Avec Ollama, définir <code>LLM_PROVIDER=ollama</code> et <code>OLLAMA_MODEL=gemma3:4b</code>, puis lancer <code>python .\scripts\evaluer_llm.py</code>. Avec OpenAI, ces trois appels peuvent être facturés.</div>
+
+  <h2>8. Sécurité, confidentialité et limites</h2>
+  <ul>
+    <li>Les entrées URL acceptent HTTP(S); les hôtes locaux, identifiants intégrés et adresses IP non publiques sont rejetés.</li>
+    <li>Les redirections sont suivies manuellement et chaque destination est validée avant la requête suivante.</li>
+    <li>La taille de HTML téléchargé est limitée à 2 Mio. Les demandes JSON entrantes sont limitées à 64 Kio.</li>
+    <li>Les appels parallèles sont limités à trois travailleurs; la liste d’URL de scraping parallèle est limitée à dix éléments.</li>
+    <li>Le contenu HTML utilisateur est affiché comme texte; les cellules CSV susceptibles d’être interprétées comme formules sont neutralisées.</li>
+    <li>Le contrôle DNS préalable ne neutralise pas complètement le DNS rebinding, car Requests résout le nom au moment de la connexion. Ne pas exposer l’outil comme service public multi-utilisateur sans correction supplémentaire.</li>
+    <li>En mode Ollama, le texte est envoyé au service local. En mode OpenAI, le texte de page est transmis à OpenAI après le clic; ne transmettre que du contenu autorisé.</li>
+    <li>Le quota OpenAI de cinq appels par heure est en mémoire et revient à zéro au redémarrage; configurer également une limite de dépenses chez le fournisseur.</li>
+  </ul>
+
+  <h2>9. Déploiement et tâches à finaliser</h2>
+  <p>Aucun hébergeur n’est configuré et aucun déploiement public n’a été effectué. Render est proposé comme option de démonstration, avec Gunicorn, mais la mise en ligne exige le choix d’un compte, la vérification des limites de l’offre et l’autorisation de publication. Compte tenu de la limite DNS rebinding, le déploiement public ne doit pas être fait sans renforcement de la protection réseau.</p>
+  <p>Les éléments qui ne peuvent pas être déduits du code — dates exactes du stage, accueil, échanges avec le tuteur, retours de l’équipe, revue de code ou présentation formelle — doivent être confirmés et rédigés par la stagiaire. Les tâches 9, 10 et 14 peuvent aussi demander une clarification de l’encadrant : comparaison écrite Requests/Playwright, essais sur plusieurs structures de sites, et CSV compatible avec Excel plutôt qu’un fichier XLSX natif.</p>
+  <p>La liste complète des 30 tâches et de leurs preuves ou points à confirmer figure dans <code>docs/verification-taches-stage.md</code>. La trame de rapport de stage reste distincte de ce rapport technique.</p>
+
+  <h2>Conclusion</h2>
+  <p>Le dépôt fournit deux outils web fonctionnels, des scripts de scraping, des interfaces adaptatives, une API Flask, des exports, une analyse LLM à fournisseur sélectionnable et une suite de tests. Les vérifications automatisées et les essais réseau bornés attestent du fonctionnement local des composants décrits. Les étapes de validation personnelle, l’évaluation complète de qualité LLM et une éventuelle publication restent à terminer avant une remise définitive à l’encadrant.</p>
+  <p class="small">Rapport technique du projet Stage Unifunl · 24 octobre 2026</p>
+</body>
+</html>

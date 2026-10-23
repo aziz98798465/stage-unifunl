@@ -1,0 +1,23 @@
+[
+  {
+    "id": "book_description",
+    "category": "Book",
+    "name_contains": "The Clockwork Island",
+    "required_terms": ["clockwork", "island"],
+    "text": "The Clockwork Island is a mystery novel by Mara Bell. A cartographer visits an island where mechanical clocks control the tides. The book is available in paperback."
+  },
+  {
+    "id": "article_summary",
+    "category": "Article",
+    "name_contains": "Urban Gardens",
+    "required_terms": ["gardens", "rainwater"],
+    "text": "Urban Gardens in Dry Cities is an article about community gardens. It describes collecting rainwater, choosing drought tolerant plants, and sharing tools among neighborhood groups."
+  },
+  {
+    "id": "product_description",
+    "category": "Product",
+    "name_contains": "Trail Bottle",
+    "required_terms": ["steel", "750 ml"],
+    "text": "The Trail Bottle is a reusable 750 ml insulated bottle. Its double wall stainless steel body keeps drinks cold and the leak resistant lid is designed for hiking."
+  }
+]

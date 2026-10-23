@@ -7,6 +7,9 @@ const message = document.getElementById("message");
 const resultsSection = document.getElementById("results-section");
 const resultsDescription = document.getElementById("results-description");
 const productGrid = document.getElementById("product-grid");
+const analyzePageButton = document.getElementById("analyze-page-button");
+const aiMessage = document.getElementById("ai-message");
+const aiResults = document.getElementById("ai-results");
 
 let derniersProduits = [];
 
@@ -155,9 +158,13 @@ exportButton.addEventListener("click", () => {
     const colonnes = ["titre", "prix", "devise", "image_url"];
 
     function echapperCSV(valeur) {
-        const texte = valeur === null || valeur === undefined
+        let texte = valeur === null || valeur === undefined
             ? ""
             : String(valeur);
+
+        if (/^[\s]*[=+@\-\t\r]/.test(texte)) {
+            texte = `'${texte}`;
+        }
 
         return `"${texte.replace(/"/g, '""')}"`;
     }
@@ -184,4 +191,57 @@ exportButton.addEventListener("click", () => {
     lien.remove();
 
     URL.revokeObjectURL(urlFichier);
+});
+
+
+analyzePageButton.addEventListener("click", async () => {
+    const url = urlInput.value.trim();
+    aiResults.hidden = true;
+    aiMessage.hidden = false;
+    aiMessage.classList.remove("error");
+
+    if (!url) {
+        aiMessage.textContent = "Saisissez d’abord l’URL de la page.";
+        aiMessage.classList.add("error");
+        return;
+    }
+
+    analyzePageButton.disabled = true;
+    analyzePageButton.textContent = "Analyse en cours…";
+    aiMessage.textContent = "Le texte de la page est envoyé au service IA pour analyse…";
+
+    try {
+        const reponse = await fetch("/api/analyze-page", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url })
+        });
+        const resultat = await reponse.json();
+        if (!reponse.ok || !resultat.success) {
+            throw new Error(resultat.error?.message || "L’analyse IA a échoué.");
+        }
+
+        const analyse = resultat.data;
+        document.getElementById("ai-category").textContent = analyse.category;
+        document.getElementById("ai-summary").textContent = analyse.summary;
+        document.getElementById("ai-name").textContent = analyse.name || "Non trouvé";
+        document.getElementById("ai-description").textContent = analyse.description || "Non trouvée";
+        const liste = document.getElementById("ai-features");
+        liste.replaceChildren();
+        for (const caracteristique of analyse.features) {
+            const item = document.createElement("li");
+            item.textContent = caracteristique;
+            liste.appendChild(item);
+        }
+        aiResults.hidden = false;
+        aiMessage.textContent = "Analyse terminée.";
+    } catch (erreur) {
+        aiMessage.textContent = erreur instanceof TypeError
+            ? "Impossible de contacter le serveur local."
+            : (erreur.message || "L’analyse IA a échoué.");
+        aiMessage.classList.add("error");
+    } finally {
+        analyzePageButton.disabled = false;
+        analyzePageButton.textContent = "Analyser avec l’IA";
+    }
 });

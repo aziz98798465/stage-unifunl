@@ -2,6 +2,7 @@
 import pytest
 
 from app import app
+from scraper.first_scraper import scraper_produits
 
 
 @pytest.fixture
@@ -54,6 +55,35 @@ def test_scraping_url_invalide(client):
 
     assert donnees["success"] is False
     assert donnees["error"]["code"] == "INVALID_URL"
+
+
+def test_scraper_refuse_destination_locale_sans_requete():
+    with pytest.raises(ValueError):
+        scraper_produits("http://127.0.0.1/")
+
+
+@pytest.mark.parametrize("max_pages", [0, -1, 11, True, 1.5])
+def test_scraper_refuse_limite_pages_invalide(max_pages):
+    with pytest.raises(ValueError):
+        scraper_produits("http://127.0.0.1/", max_pages=max_pages)
+
+
+def test_api_scrape_batch(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.scraper_urls_en_parallele",
+        lambda urls: [{"titre": f"Résultat {len(urls)}"}],
+    )
+    reponse = client.post(
+        "/api/scrape-batch",
+        json={"urls": ["https://books.example/a", "https://books.example/b"]},
+    )
+    assert reponse.status_code == 200
+    assert reponse.get_json()["count"] == 1
+
+
+def test_api_scrape_batch_refuse_liste_vide(client):
+    reponse = client.post("/api/scrape-batch", json={"urls": []})
+    assert reponse.status_code == 400
 
 
 # =========================================================
@@ -138,6 +168,12 @@ def test_verification_liens_sans_donnees_json(client):
 
     assert donnees["success"] is False
     assert donnees["error"]["code"] == "MISSING_URL"
+
+
+def test_verification_liens_json_non_objet(client):
+    reponse = client.post("/api/check-links", json=["https://example.com"])
+    assert reponse.status_code == 400
+    assert reponse.get_json()["error"]["code"] == "INVALID_JSON"
 
 
 def test_verification_liens_succes(client, monkeypatch):

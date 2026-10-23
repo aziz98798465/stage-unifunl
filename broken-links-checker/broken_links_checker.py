@@ -18,6 +18,7 @@ TIMEOUT = 10
 DELAI_ENTRE_REQUETES = 0.3
 MAX_LIENS = 100
 MAX_REDIRECTIONS = 10
+MAX_TAILLE_PAGE = 2 * 1024 * 1024
 
 DOSSIER_SORTIE = Path(__file__).parent / "output"
 
@@ -28,7 +29,14 @@ def valider_url(url):
         raise ValueError("L'URL est obligatoire.")
 
     url = url.strip()
-    parties = urlparse(url)
+
+    if any(ord(caractere) < 32 for caractere in url):
+        raise ValueError("L'URL contient des caractères de contrôle.")
+
+    try:
+        parties = urlparse(url)
+    except ValueError as erreur:
+        raise ValueError("L'URL est mal formée.") from erreur
 
     if parties.scheme.lower() not in ("http", "https") or not parties.hostname:
         raise ValueError("L'URL doit commencer par http:// ou https://.")
@@ -66,7 +74,7 @@ def valider_url(url):
                 port or (443 if parties.scheme.lower() == "https" else 80),
                 type=socket.SOCK_STREAM,
             )
-        except socket.gaierror as erreur:
+        except OSError as erreur:
             raise ValueError(
                 "Le nom de domaine ne peut pas être résolu."
             ) from erreur
@@ -105,6 +113,7 @@ def creer_session():
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"],
         respect_retry_after_header=True,
+        retry_after_max=5,
     )
 
     adaptateur = HTTPAdapter(max_retries=strategie)
@@ -136,7 +145,12 @@ def extraire_liens(html, url_base):
     return sorted(liens)
 
 
-def effectuer_requete_securisee(session, url, max_redirections=MAX_REDIRECTIONS):
+def effectuer_requete_securisee(
+    session,
+    url,
+    max_redirections=MAX_REDIRECTIONS,
+    timeout=TIMEOUT,
+):
     """Effectuer une requête en validant chaque destination de redirection."""
     url_courante = valider_url(url)
     historique = set()
@@ -151,7 +165,7 @@ def effectuer_requete_securisee(session, url, max_redirections=MAX_REDIRECTIONS)
 
         reponse = session.get(
             url_courante,
-            timeout=TIMEOUT,
+            timeout=timeout,
             allow_redirects=False,
             stream=True,
         )
@@ -180,6 +194,28 @@ def effectuer_requete_securisee(session, url, max_redirections=MAX_REDIRECTIONS)
     raise requests.RequestException(
         f"Nombre maximal de redirections dépassé ({max_redirections})."
     )
+
+
+def lire_contenu_limite(reponse, limite=MAX_TAILLE_PAGE):
+    """Lire une réponse sans dépasser la taille maximale autorisée."""
+    longueur = reponse.headers.get("Content-Length")
+    if longueur:
+        try:
+            if int(longueur) > limite:
+                raise requests.RequestException(
+                    f"La réponse dépasse la limite de {limite} octets."
+                )
+        except ValueError:
+            pass
+
+    contenu = bytearray()
+    for morceau in reponse.iter_content(chunk_size=65536):
+        contenu.extend(morceau)
+        if len(contenu) > limite:
+            raise requests.RequestException(
+                f"La réponse dépasse la limite de {limite} octets."
+            )
+    return bytes(contenu)
 
 
 def verifier_lien(session, url):
@@ -216,8 +252,9 @@ def verifier_liens_page(url, max_liens=MAX_LIENS):
         not isinstance(max_liens, int)
         or isinstance(max_liens, bool)
         or max_liens < 1
+        or max_liens > 500
     ):
-        raise ValueError("max_liens doit être un entier positif.")
+        raise ValueError("max_liens doit être compris entre 1 et 500.")
 
     with creer_session() as session:
         reponse = effectuer_requete_securisee(session, url)
@@ -225,7 +262,8 @@ def verifier_liens_page(url, max_liens=MAX_LIENS):
         try:
             reponse.raise_for_status()
             url_finale = reponse.url
-            liens = extraire_liens(reponse.text, url_finale)
+            contenu = lire_contenu_limite(reponse)
+            liens = extraire_liens(contenu, url_finale)
         finally:
             reponse.close()
 
@@ -283,7 +321,15 @@ def exporter_csv(rapport, chemin):
             delimiter=";",
         )
         writer.writeheader()
-        writer.writerows(rapport["resultats"])
+        for resultat in rapport["resultats"]:
+            ligne = resultat.copy()
+            for champ in champs:
+                valeur = ligne.get(champ)
+                if isinstance(valeur, str) and valeur.lstrip().startswith(
+                    ("=", "+", "-", "@", "\t", "\r")
+                ):
+                    ligne[champ] = "'" + valeur
+            writer.writerow(ligne)
 
 
 def main():

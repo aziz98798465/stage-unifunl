@@ -24,3 +24,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 verifier_liens_page = module.verifier_liens_page
+creer_session = module.creer_session
+valider_url = module.valider_url
+effectuer_requete_securisee = module.effectuer_requete_securisee
+lire_contenu_limite = module.lire_contenu_limite

@@ -3,6 +3,7 @@ import csv
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -16,8 +17,9 @@ from bs4 import BeautifulSoup
 # Configuration
 URL = "https://books.toscrape.com/catalogue/category/books_1/index.html"
 MAX_PAGES = 3
-DELAI_ENTRE_REQUETES = 1
+DELAI_ENTRE_REQUETES = 0.5
 TIMEOUT = 15
+NOMBRE_REQUETES_PARALLELES = 3
 
 DOSSIER_SORTIE = Path(__file__).parent / "output"
 
@@ -27,12 +29,15 @@ def valider_url(url):
     if not isinstance(url, str) or not url.strip():
         raise ValueError("L'URL est vide ou invalide.")
 
-    parties = urlparse(url.strip())
+    url = url.strip()
+    parties = urlparse(url)
 
     if parties.scheme not in ("http", "https") or not parties.hostname:
-        raise ValueError("L'URL doit commencer par http:// ou https://.")
+        raise ValueError(
+            "L'URL doit commencer par http:// ou https://."
+        )
 
-    return url.strip()
+    return url
 
 
 def creer_session():
@@ -54,7 +59,12 @@ def creer_session():
         respect_retry_after_header=True,
     )
 
-    adaptateur = HTTPAdapter(max_retries=strategie)
+    adaptateur = HTTPAdapter(
+        max_retries=strategie,
+        pool_connections=NOMBRE_REQUETES_PARALLELES,
+        pool_maxsize=NOMBRE_REQUETES_PARALLELES,
+    )
+
     session.mount("https://", adaptateur)
     session.mount("http://", adaptateur)
 
@@ -107,7 +117,6 @@ def extraire_produits(soup, url_page):
         if image_element and image_element.get("src"):
             image_url = urljoin(url_page, image_element["src"])
 
-        # Ignorer une fiche sans titre exploitable.
         if not titre:
             print("Attention : produit ignoré car son titre est absent.")
             continue
@@ -122,58 +131,137 @@ def extraire_produits(soup, url_page):
     return produits
 
 
+def telecharger_page(session, url):
+    """Télécharger une page et vérifier la réponse HTTP."""
+    response = session.get(url, timeout=TIMEOUT)
+    response.raise_for_status()
+    return response
+
+
+def decouvrir_pages(session, url, max_pages):
+    """
+    Télécharger les pages en suivant la pagination et conserver
+    leur contenu HTML pour éviter de les télécharger une seconde fois.
+    """
+    pages = []
+    url_page = url
+
+    for numero_page in range(1, max_pages + 1):
+        print(f"\nTéléchargement de la page {numero_page} : {url_page}")
+
+        try:
+            response = telecharger_page(session, url_page)
+        except requests.RequestException as erreur:
+            print(f"Erreur HTTP ou réseau : {erreur}")
+            break
+
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Conserver le contenu déjà téléchargé.
+        pages.append({
+            "url": response.url,
+            "contenu": response.content,
+        })
+
+        lien_suivant = soup.select_one("li.next a")
+
+        if not lien_suivant:
+            print("Fin de la pagination.")
+            break
+
+        url_page = urljoin(response.url, lien_suivant["href"])
+
+        if numero_page < max_pages:
+            time.sleep(DELAI_ENTRE_REQUETES)
+
+    return pages
+
+
+def extraire_page_telechargee(page):
+    """Extraire les produits du HTML déjà téléchargé, sans nouvelle requête."""
+    soup = BeautifulSoup(page["contenu"], "html.parser")
+
+    produits = extraire_produits(soup, page["url"])
+
+    return {
+        "url": page["url"],
+        "produits": produits,
+    }
+
+
 def scraper_produits(url, max_pages=MAX_PAGES):
-    """Scraper plusieurs pages avec gestion des erreurs."""
+    """Télécharger chaque page une seule fois et traiter le HTML en parallèle."""
     url = valider_url(url)
 
-    if not isinstance(max_pages, int) or isinstance(max_pages, bool) or max_pages < 1:
-        raise ValueError("max_pages doit être un entier supérieur ou égal à 1.")
-
-    resultats = []
-    page_url = url
-    pages_reussies = 0
+    if (
+        not isinstance(max_pages, int)
+        or isinstance(max_pages, bool)
+        or max_pages < 1
+    ):
+        raise ValueError(
+            "max_pages doit être un entier supérieur ou égal à 1."
+        )
 
     with creer_session() as session:
-        for numero_page in range(1, max_pages + 1):
-            print(f"\nPage {numero_page} : {page_url}")
+        pages = decouvrir_pages(session, url, max_pages)
+
+    if not pages:
+        print("Aucune page n'a pu être récupérée.")
+        return []
+
+    print(
+        f"\nExtraction des {len(pages)} page(s) déjà téléchargées, "
+        f"avec un maximum de {NOMBRE_REQUETES_PARALLELES} tâches simultanées."
+    )
+
+    resultats_par_page = {}
+    pages_reussies = 0
+    erreurs = []
+
+    with ThreadPoolExecutor(
+        max_workers=NOMBRE_REQUETES_PARALLELES
+    ) as executant:
+        futures = {
+            executant.submit(extraire_page_telechargee, page): (
+                indice,
+                page["url"],
+            )
+            for indice, page in enumerate(pages)
+        }
+
+        for future in as_completed(futures):
+            indice, url_page = futures[future]
 
             try:
-                response = session.get(page_url, timeout=TIMEOUT)
-                response.raise_for_status()
+                resultat = future.result()
+                resultats_par_page[indice] = resultat["produits"]
+                pages_reussies += 1
 
-            except requests.RequestException as erreur:
-                print(f"Erreur HTTP ou réseau : {erreur}")
-                print("Arrêt de la pagination.")
-                break
+                print(
+                    f"Page traitée : {url_page} "
+                    f"({len(resultat['produits'])} produits)"
+                )
 
-            # Laisser Requests détecter l'encodage lorsque c'est possible.
-            soup = BeautifulSoup(response.content, "html.parser")
-            produits_page = extraire_produits(soup, response.url)
+            except Exception as erreur:
+                erreurs.append((url_page, str(erreur)))
+                print(
+                    f"Erreur lors du traitement de {url_page} : {erreur}"
+                )
 
-            if not produits_page:
-                print("Aucun produit exploitable trouvé sur cette page.")
-                break
+    # Restaurer l'ordre des pages, même si les tâches finissent différemment.
+    produits = []
 
-            resultats.extend(produits_page)
-            pages_reussies += 1
-
-            print(f"Produits récupérés sur cette page : {len(produits_page)}")
-
-            lien_suivant = soup.select_one("li.next a")
-
-            if not lien_suivant:
-                print("Fin de la pagination.")
-                break
-
-            page_url = urljoin(response.url, lien_suivant["href"])
-
-            if numero_page < max_pages:
-                time.sleep(DELAI_ENTRE_REQUETES)
+    for indice in sorted(resultats_par_page):
+        produits.extend(resultats_par_page[indice])
 
     print(f"\nPages traitées avec succès : {pages_reussies}")
-    print(f"Total de produits récupérés : {len(resultats)}")
 
-    return resultats
+    if erreurs:
+        print(f"Pages en erreur : {len(erreurs)}")
+
+    print(f"Total de produits récupérés : {len(produits)}")
+
+    return produits
 
 
 def exporter_json(produits, chemin):
@@ -197,7 +285,9 @@ def main():
     DOSSIER_SORTIE.mkdir(parents=True, exist_ok=True)
 
     try:
+        debut = time.perf_counter()
         produits = scraper_produits(URL)
+        duree = time.perf_counter() - debut
 
         chemin_json = DOSSIER_SORTIE / "produits.json"
         chemin_csv = DOSSIER_SORTIE / "produits.csv"
@@ -209,6 +299,7 @@ def main():
         print(f"Produits exportés : {len(produits)}")
         print(f"JSON : {chemin_json}")
         print(f"CSV  : {chemin_csv}")
+        print(f"Durée du scraping : {duree:.2f} seconde(s)")
         print("=" * 50)
 
         if not produits:

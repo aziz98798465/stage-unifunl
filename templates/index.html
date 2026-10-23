@@ -1,0 +1,66 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interface de scraping web du projet de stage Unifunl.">
+    <title>Unifunl Scraper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">Unifunl<span>Scraper</span></a>
+        <span class="status"><span class="status-dot"></span> API locale</span>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <p class="eyebrow">OUTIL DE SCRAPING WEB</p>
+            <h1>Explorez les données<br>du Web.</h1>
+            <p class="subtitle">
+                Saisissez l'adresse d'un site pour extraire ses données
+                et consulter les résultats dans une interface simple.
+            </p>
+
+            <form id="scrape-form" class="search-form">
+                <label for="url-input">Adresse du site web</label>
+                <div class="input-row">
+                    <input
+                        id="url-input"
+                        name="url"
+                        type="url"
+                        placeholder="https://books.toscrape.com/catalogue/category/books_1/index.html"
+                        value="https://books.toscrape.com/catalogue/category/books_1/index.html"
+                        required
+                    >
+                    <button id="scrape-button" type="submit">Lancer le scraping</button>
+                </div>
+                <p class="hint">Exemple : Books to Scrape, un site de démonstration.</p>
+            </form>
+
+            <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+        </section>
+
+        <section id="results-section" class="results-section" hidden>
+            <div class="results-header">
+                <div>
+                    <p class="eyebrow">RÉSULTATS</p>
+                    <h2>Produits extraits</h2>
+                    <p id="results-description" class="subtitle"></p>
+                </div>
+                <button id="export-button" class="secondary-button" type="button" disabled>
+                    Exporter en CSV
+                </button>
+            </div>
+
+            <div id="product-grid" class="product-grid"></div>
+        </section>
+
+        <footer>
+            Projet de stage Unifunl · Scraping avec Python, Flask et JavaScript
+        </footer>
+    </main>
+</body>
+</html>

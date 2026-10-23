@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Vérificateur de liens | Unifunl</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='broken_links.css') }}"
+    >
+
+    <script
+        src="{{ url_for('static', filename='broken_links.js') }}"
+        defer
+    ></script>
+</head>
+
+<body>
+    <header class="topbar">
+        <a class="brand" href="/">Unifunl</a>
+
+        <nav aria-label="Navigation principale">
+            <a href="/">Scraper</a>
+            <a href="/liens" class="active" aria-current="page">
+                Vérificateur de liens
+            </a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="intro">
+            <p class="eyebrow">OUTIL WEB · UNIFUNL</p>
+
+            <h1>Vérificateur de liens cassés</h1>
+
+            <p>
+                Analysez une page web, vérifiez ses liens et consultez
+                un rapport détaillé.
+            </p>
+        </section>
+
+        <section class="panel" aria-label="Formulaire de vérification">
+            <!-- novalidate permet au JavaScript d'afficher ses propres erreurs -->
+            <form id="link-form" novalidate>
+                <label for="url">URL de la page à analyser</label>
+
+                <input
+                    type="url"
+                    id="url"
+                    name="url"
+                    placeholder="https://books.toscrape.com"
+                    autocomplete="url"
+                    aria-describedby="url-help message"
+                    required
+                >
+
+                <label for="max-links">Nombre maximal de liens</label>
+
+                <select id="max-links" name="max_links">
+                    <option value="10">10 liens</option>
+                    <option value="50">50 liens</option>
+                    <option value="100" selected>100 liens</option>
+                    <option value="250">250 liens</option>
+                    <option value="500">500 liens</option>
+                </select>
+
+                <button id="submit-button" type="submit">
+                    Vérifier les liens
+                </button>
+            </form>
+
+            <p id="url-help" class="message">
+                Exemple : https://books.toscrape.com
+            </p>
+
+            <p
+                id="message"
+                class="message"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            ></p>
+        </section>
+
+        <section id="results" aria-labelledby="results-title" hidden>
+            <h2 id="results-title">Résumé du rapport</h2>
+
+            <div class="stats">
+                <article class="stat-card">
+                    <span>Liens trouvés</span>
+                    <strong id="found-count">0</strong>
+                </article>
+
+                <article class="stat-card">
+                    <span>Liens vérifiés</span>
+                    <strong id="checked-count">0</strong>
+                </article>
+
+                <article class="stat-card broken">
+                    <span>Liens cassés</span>
+                    <strong id="broken-count">0</strong>
+                </article>
+
+                <article class="stat-card errors">
+                    <span>Erreurs réseau</span>
+                    <strong id="error-count">0</strong>
+                </article>
+            </div>
+
+            <div class="table-heading">
+                <h2>Détail des liens</h2>
+
+                <button
+                    id="export-csv"
+                    type="button"
+                    class="secondary"
+                >
+                    Exporter le CSV
+                </button>
+            </div>
+
+            <div
+                class="table-wrapper"
+                role="region"
+                aria-label="Résultats des liens vérifiés"
+                tabindex="0"
+            >
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">URL</th>
+                            <th scope="col">Code HTTP</th>
+                            <th scope="col">Statut</th>
+                            <th scope="col">Erreur</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer>
+            <p>Unifunl — Outil de vérification des liens web</p>
+        </footer>
+    </main>
+</body>
+</html>

@@ -1,10 +1,12 @@
 
 import argparse
 import csv
+import ipaddress
 import json
+import socket
 import time
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,20 +17,73 @@ from urllib3.util.retry import Retry
 TIMEOUT = 10
 DELAI_ENTRE_REQUETES = 0.3
 MAX_LIENS = 100
+MAX_REDIRECTIONS = 10
 
 DOSSIER_SORTIE = Path(__file__).parent / "output"
 
 
 def valider_url(url):
-    """Vérifier qu'une URL est une adresse HTTP ou HTTPS valide."""
+    """Valider une URL HTTP(S) et bloquer les destinations non publiques."""
     if not isinstance(url, str) or not url.strip():
         raise ValueError("L'URL est obligatoire.")
 
     url = url.strip()
     parties = urlparse(url)
 
-    if parties.scheme not in ("http", "https") or not parties.hostname:
+    if parties.scheme.lower() not in ("http", "https") or not parties.hostname:
         raise ValueError("L'URL doit commencer par http:// ou https://.")
+
+    if parties.username or parties.password:
+        raise ValueError("Les URL contenant des identifiants sont interdites.")
+
+    try:
+        port = parties.port
+    except ValueError as erreur:
+        raise ValueError("Le port de l'URL est invalide.") from erreur
+
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("Le port doit être compris entre 1 et 65535.")
+
+    hote = parties.hostname.lower().rstrip(".")
+
+    if hote == "localhost" or hote.endswith(".localhost"):
+        raise ValueError("Les adresses locales ne sont pas autorisées.")
+
+    try:
+        ip = ipaddress.ip_address(hote)
+    except ValueError:
+        ip = None
+
+    if ip is not None:
+        if not ip.is_global:
+            raise ValueError(
+                "Les adresses IP privées, locales ou réservées sont interdites."
+            )
+    else:
+        try:
+            adresses = socket.getaddrinfo(
+                hote,
+                port or (443 if parties.scheme.lower() == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+        except socket.gaierror as erreur:
+            raise ValueError(
+                "Le nom de domaine ne peut pas être résolu."
+            ) from erreur
+
+        if not adresses:
+            raise ValueError(
+                "Le nom de domaine ne possède aucune adresse IP valide."
+            )
+
+        for adresse in adresses:
+            ip_resolue = ipaddress.ip_address(adresse[4][0])
+
+            if not ip_resolue.is_global:
+                raise ValueError(
+                    "Le domaine pointe vers une adresse IP privée, "
+                    "locale ou réservée."
+                )
 
     return url
 
@@ -36,6 +91,7 @@ def valider_url(url):
 def creer_session():
     """Créer une session HTTP avec une gestion des erreurs temporaires."""
     session = requests.Session()
+
     session.headers.update({
         "User-Agent": "UnifunlBrokenLinksChecker/1.0"
     })
@@ -72,7 +128,7 @@ def extraire_liens(html, url_base):
         url_complete = urljoin(url_base, href)
         parties = urlparse(url_complete)
 
-        if parties.scheme in ("http", "https") and parties.hostname:
+        if parties.scheme.lower() in ("http", "https") and parties.hostname:
             # Supprimer les fragments (#section) pour éviter les doublons.
             url_sans_fragment = parties._replace(fragment="").geturl()
             liens.add(url_sans_fragment)
@@ -80,29 +136,69 @@ def extraire_liens(html, url_base):
     return sorted(liens)
 
 
-def verifier_lien(session, url):
-    """Tester un lien et retourner son statut."""
-    try:
-        # GET est utilisé pour éviter les faux résultats liés à HEAD.
+def effectuer_requete_securisee(session, url, max_redirections=MAX_REDIRECTIONS):
+    """Effectuer une requête en validant chaque destination de redirection."""
+    url_courante = valider_url(url)
+    historique = set()
+
+    for _ in range(max_redirections + 1):
+        if url_courante in historique:
+            raise requests.RequestException(
+                "Une boucle de redirection a été détectée."
+            )
+
+        historique.add(url_courante)
+
         reponse = session.get(
-            url,
+            url_courante,
             timeout=TIMEOUT,
-            allow_redirects=True,
+            allow_redirects=False,
             stream=True,
         )
 
-        resultat = {
-            "url": url,
-            "status_code": reponse.status_code,
-            "status": "ok" if reponse.ok else "broken",
-            "url_finale": reponse.url,
-            "erreur": None,
-        }
+        if reponse.status_code not in (301, 302, 303, 307, 308):
+            return reponse
 
+        emplacement = reponse.headers.get("Location")
+        url_precedente = reponse.url
         reponse.close()
-        return resultat
 
-    except requests.RequestException as erreur:
+        if not emplacement:
+            raise requests.RequestException(
+                "Redirection reçue sans en-tête Location."
+            )
+
+        url_suivante = urljoin(url_precedente, emplacement)
+
+        try:
+            url_courante = valider_url(url_suivante)
+        except ValueError as erreur:
+            raise requests.RequestException(
+                f"Redirection bloquée pour des raisons de sécurité : {erreur}"
+            ) from erreur
+
+    raise requests.RequestException(
+        f"Nombre maximal de redirections dépassé ({max_redirections})."
+    )
+
+
+def verifier_lien(session, url):
+    """Tester un lien et retourner son statut."""
+    try:
+        reponse = effectuer_requete_securisee(session, url)
+
+        try:
+            return {
+                "url": url,
+                "status_code": reponse.status_code,
+                "status": "ok" if reponse.ok else "broken",
+                "url_finale": reponse.url,
+                "erreur": None,
+            }
+        finally:
+            reponse.close()
+
+    except (requests.RequestException, ValueError) as erreur:
         return {
             "url": url,
             "status_code": None,
@@ -116,21 +212,31 @@ def verifier_liens_page(url, max_liens=MAX_LIENS):
     """Télécharger une page et vérifier ses liens."""
     url = valider_url(url)
 
-    if not isinstance(max_liens, int) or isinstance(max_liens, bool) or max_liens < 1:
+    if (
+        not isinstance(max_liens, int)
+        or isinstance(max_liens, bool)
+        or max_liens < 1
+    ):
         raise ValueError("max_liens doit être un entier positif.")
 
     with creer_session() as session:
-        reponse = session.get(url, timeout=TIMEOUT)
-        reponse.raise_for_status()
+        reponse = effectuer_requete_securisee(session, url)
 
-        url_finale = reponse.url
-        liens = extraire_liens(reponse.text, url_finale)
+        try:
+            reponse.raise_for_status()
+            url_finale = reponse.url
+            liens = extraire_liens(reponse.text, url_finale)
+        finally:
+            reponse.close()
 
         liens_a_verifier = liens[:max_liens]
         resultats = []
 
         for numero, lien in enumerate(liens_a_verifier, start=1):
-            print(f"[{numero}/{len(liens_a_verifier)}] Vérification : {lien}")
+            print(
+                f"[{numero}/{len(liens_a_verifier)}] "
+                f"Vérification : {lien}"
+            )
 
             resultats.append(verifier_lien(session, lien))
 
@@ -143,10 +249,12 @@ def verifier_liens_page(url, max_liens=MAX_LIENS):
         "nombre_liens_trouves": len(liens),
         "nombre_liens_verifies": len(resultats),
         "nombre_liens_casses": sum(
-            resultat["status"] == "broken" for resultat in resultats
+            resultat["status"] == "broken"
+            for resultat in resultats
         ),
         "nombre_erreurs_reseau": sum(
-            resultat["status"] == "error" for resultat in resultats
+            resultat["status"] == "error"
+            for resultat in resultats
         ),
         "resultats": resultats,
     }
@@ -169,7 +277,11 @@ def exporter_csv(rapport, chemin):
     ]
 
     with open(chemin, "w", newline="", encoding="utf-8-sig") as fichier:
-        writer = csv.DictWriter(fichier, fieldnames=champs)
+        writer = csv.DictWriter(
+            fichier,
+            fieldnames=champs,
+            delimiter=";",
+        )
         writer.writeheader()
         writer.writerows(rapport["resultats"])
 
